@@ -6,10 +6,12 @@ on:
     branches: ["main"]
     paths:
       - "public/**"
-      - "web/**"
+      - "src/**"
+      - "index.html"
+      - "vite.config.ts"
       - "package.json"
       - "package-lock.json"
-      - "tsconfig.web.json"
+      - "tsconfig.app.json"
 
 permissions:
   contents: read
@@ -45,12 +47,12 @@ jobs:
       - name: Build search page
         run: |
           npm ci
-          npm run build:web
+          npm run build
 
       - name: Upload static site and API
         uses: actions/upload-pages-artifact@v4
         with:
-          path: public
+          path: dist
 
       - name: Deploy
         id: deployment
