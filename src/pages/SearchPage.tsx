@@ -72,6 +72,13 @@ export function SearchPage() {
     <>
       <title>医療機関 施設基準検索</title>
 
+      <p className="text-sm leading-relaxed">
+        地方厚生（支）局が公開する届出受理医療機関名簿から、医療機関ごとに届け出られた施設基準を検索できます。医療機関名または10桁の医療機関コードで検索してください。
+      </p>
+      <p className="mt-2 mb-6 text-xs leading-relaxed text-slate-500">
+        本サイトは内容の地方厚生（支）局が公開する届出受理医療機関名簿を加工して作成したデータを元にしています。正確性・完全性は保証しません。届出状況は基準日以降に変更される場合があるため、正式な情報は各厚生局の公開資料をご確認ください。
+      </p>
+
       <form role="search" onSubmit={handleSubmit} className="flex">
         <input
           type="search"

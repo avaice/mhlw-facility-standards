@@ -36,7 +36,7 @@ export function Layout({ children }: { children: ReactNode }) {
 
       <footer className="border-t border-slate-300">
         <p className="mx-auto max-w-3xl px-4 py-4 text-xs leading-relaxed text-slate-500">
-          本サイトは地方厚生（支）局が公開する届出受理医療機関名簿を機械的に変換した非公式の参考情報です。内容の正確性・完全性は保証しません。正式な情報は各厚生局の公開資料をご確認ください。
+          本サイトは内容の地方厚生（支）局が公開する届出受理医療機関名簿を加工して作成したデータを元にしています。正確性・完全性は保証しません。届出状況は基準日以降に変更される場合があるため、正式な情報は各厚生局の公開資料をご確認ください。
         </p>
       </footer>
     </div>
