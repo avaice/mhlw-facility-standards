@@ -1,0 +1,15 @@
+@import "tailwindcss";
+
+@theme {
+  /* 日本語の可読性を優先したフォントスタック */
+  --font-sans:
+    "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", Meiryo,
+    system-ui, sans-serif;
+  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+}
+
+@layer base {
+  body {
+    @apply bg-white font-sans text-slate-900 antialiased;
+  }
+}
