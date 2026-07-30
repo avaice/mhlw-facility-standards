@@ -1,7 +1,7 @@
 import ExcelJS from "exceljs";
 import { describe, expect, it } from "vitest";
-import { parseWorkbook } from "../src/parser/workbook.js";
-import type { WorkbookDocument } from "../src/types.js";
+import { parseWorkbook } from "./workbook.js";
+import type { WorkbookDocument } from "../types.js";
 
 async function fixtureWorkbook(): Promise<WorkbookDocument> {
   const workbook = new ExcelJS.Workbook();

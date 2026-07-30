@@ -136,17 +136,3 @@ export interface FacilitySearchIndex {
   facilityCount: number;
   facilities: FacilitySearchTuple[];
 }
-
-export interface FacilityLookupResult {
-  medicalInstitutionCode: string;
-  localCode: string;
-  prefectureCode: string;
-  category: FacilityCategory;
-  facility: {
-    name: string;
-    address: string | null;
-  };
-  standards: StandardRecord[];
-  asOf: string;
-  sourceIds: string[];
-}

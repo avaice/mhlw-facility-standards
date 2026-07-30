@@ -1,14 +1,14 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { writeStaticData } from "../src/output.js";
+import { writeStaticData } from "./output.js";
 import type {
   CompactFacilityRecord,
   DataManifest,
   FacilityRecord,
   FacilitySearchIndex,
   StandardCatalog,
-} from "../src/types.js";
+} from "./types.js";
 
 const record: FacilityRecord = {
   schemaVersion: 1,

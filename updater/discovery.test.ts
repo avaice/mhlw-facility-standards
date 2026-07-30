@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { discoverDocuments } from "../src/discovery.js";
-import type { SourceDefinition } from "../src/types.js";
+import { discoverDocuments } from "./discovery.js";
+import type { SourceDefinition } from "./types.js";
 
 const source: SourceDefinition = {
   id: "fixture",

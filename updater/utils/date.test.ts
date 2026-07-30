@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   extractAsOfDates,
   parseJapaneseDate,
-} from "../src/utils/date.js";
+} from "./date.js";
 
 describe("parseJapaneseDate", () => {
   it("和暦をISO日付へ変換する", () => {
