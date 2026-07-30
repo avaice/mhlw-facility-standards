@@ -120,9 +120,12 @@ main {
 }
 
 .data-panel {
-  margin-top: -62px;
   padding: clamp(24px, 4vw, 42px);
   position: relative;
+}
+
+main > :first-child {
+  margin-top: -62px;
 }
 
 .section-heading {
@@ -254,8 +257,11 @@ th:nth-child(3) {
 }
 
 .search-section {
-  margin-top: 28px;
   padding: clamp(28px, 5vw, 54px);
+}
+
+main > :not(:first-child) {
+  margin-top: 28px;
 }
 
 .search-copy {
@@ -488,7 +494,7 @@ footer {
     padding: 48px 0 64px;
   }
 
-  .data-panel {
+  main > :first-child {
     margin-top: -48px;
   }
 

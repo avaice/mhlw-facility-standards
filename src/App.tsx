@@ -50,8 +50,8 @@ export function App() {
       </header>
 
       <main>
-        <DataStatusPanel manifest={manifest} state={manifestState} />
         <SearchSection client={client} sources={manifest?.sources ?? []} />
+        <DataStatusPanel manifest={manifest} state={manifestState} />
       </main>
 
       <footer>
