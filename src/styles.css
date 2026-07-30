@@ -119,80 +119,14 @@ main > :first-child {
   margin-top: -36px;
 }
 
-.section-heading {
-  display: flex;
-  align-items: start;
-  justify-content: space-between;
-  gap: 24px;
-}
-
 h2 {
   margin-bottom: 8px;
   font-size: 1.2rem;
   line-height: 1.35;
 }
 
-.load-state {
-  margin: 4px 0 0;
-  padding: 5px 12px;
-  color: var(--muted);
-  background: #edf1f2;
-  border-radius: 999px;
-  font-size: 0.82rem;
-  white-space: nowrap;
-}
-
-.load-state.is-ready {
-  color: var(--teal-dark);
-  background: var(--teal-pale);
-}
-
-.load-state.is-error {
-  color: #8b2929;
-  background: #fdeaea;
-}
-
-.status-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  margin: 16px 0;
-  border: 1px solid var(--line);
-}
-
-.status-item {
-  min-width: 0;
-  padding: 12px 16px;
-  border-right: 1px solid var(--line);
-}
-
-.status-item:last-child {
-  border-right: 0;
-}
-
-.status-item dt {
-  color: var(--muted);
-  font-size: 0.78rem;
-  font-weight: 700;
-}
-
-.status-item dd {
-  margin: 4px 0 0;
-  font-size: 1rem;
-  font-weight: 700;
-  line-height: 1.4;
-  overflow-wrap: anywhere;
-}
-
-.source-details {
-  border-top: 1px solid var(--line);
-}
-
-.source-details summary {
-  padding: 18px 0;
-  font-weight: 800;
-}
-
 .source-table-wrap {
+  margin-top: 16px;
   overflow-x: auto;
 }
 
@@ -462,26 +396,8 @@ footer {
     width: min(100% - 24px, 1120px);
   }
 
-  .section-heading,
   .facility-head {
     display: block;
-  }
-
-  .load-state {
-    display: inline-block;
-    margin-top: 8px;
-  }
-
-  .status-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .status-item:nth-child(2) {
-    border-right: 0;
-  }
-
-  .status-item:nth-child(-n + 2) {
-    border-bottom: 1px solid var(--line);
   }
 
   .search-control {
@@ -509,20 +425,6 @@ footer {
 }
 
 @media (max-width: 460px) {
-  .status-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .status-item,
-  .status-item:nth-child(2) {
-    border-right: 0;
-    border-bottom: 1px solid var(--line);
-  }
-
-  .status-item:last-child {
-    border-bottom: 0;
-  }
-
   .standard-list li {
     grid-template-columns: 1fr;
   }
