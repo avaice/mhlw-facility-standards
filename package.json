@@ -8,25 +8,31 @@
     "node": ">=22"
   },
   "scripts": {
-    "build": "npm run build:server && npm run build:web",
-    "build:server": "tsc -p tsconfig.json",
-    "build:web": "tsc -p tsconfig.web.json",
-    "check": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.web.json --noEmit",
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "check": "tsc -b",
     "test": "vitest run",
-    "update": "tsx src/cli.ts update",
-    "discover": "tsx src/cli.ts discover"
+    "update": "tsx updater/cli.ts update",
+    "discover": "tsx updater/cli.ts discover"
   },
   "dependencies": {
     "cheerio": "^1.1.2",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
     "saxes": "^6.0.0",
     "yauzl": "^3.2.0"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
     "@types/yauzl": "^2.10.3",
+    "@vitejs/plugin-react": "^6.0.5",
     "exceljs": "^4.4.0",
     "tsx": "^4.20.6",
     "typescript": "^5.9.2",
+    "vite": "^8.1.5",
     "vitest": "^4.1.10"
   },
   "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
