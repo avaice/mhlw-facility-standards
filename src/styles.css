@@ -13,3 +13,9 @@
     @apply bg-white font-sans text-slate-900 antialiased;
   }
 }
+
+body {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 36px 0;
+}
