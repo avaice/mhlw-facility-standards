@@ -24,10 +24,7 @@ export function DataStatusPanel({ manifest, state }: DataStatusPanelProps) {
   return (
     <section className="data-panel" aria-labelledby="data-heading">
       <div className="section-heading">
-        <div>
-          <p className="section-kicker">DATA STATUS</p>
-          <h2 id="data-heading">データの更新状況</h2>
-        </div>
+        <h2 id="data-heading">データの更新状況</h2>
         <p className={stateClasses[state]} role="status">
           {stateLabels[state]}
         </p>

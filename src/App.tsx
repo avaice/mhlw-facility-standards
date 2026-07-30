@@ -41,7 +41,6 @@ export function App() {
     <>
       <header className="site-header">
         <div className="header-inner">
-          <p className="eyebrow">PUBLIC DATA EXPLORER</p>
           <h1>医療機関 施設基準検索</h1>
           <p className="lead">
             医療機関名または10桁の医療機関コードから、届出受理済みの施設基準を確認できます。

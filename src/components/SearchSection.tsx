@@ -29,9 +29,7 @@ interface SearchSectionProps {
 export function SearchSection({ client, sources }: SearchSectionProps) {
   const [query, setQuery] = useState("");
   const [view, setView] = useState<SearchView>({ kind: "idle" });
-  const [status, setStatus] = useState(
-    "医療機関名またはコードを入力してください。",
-  );
+  const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
   const initialised = useRef(false);
 
@@ -98,7 +96,7 @@ export function SearchSection({ client, sources }: SearchSectionProps) {
     const trimmed = rawQuery.trim();
     if (!trimmed) {
       setView({ kind: "idle" });
-      setStatus("医療機関名またはコードを入力してください。");
+      setStatus("");
       return;
     }
 
@@ -139,16 +137,11 @@ export function SearchSection({ client, sources }: SearchSectionProps) {
 
   return (
     <section className="search-section" aria-labelledby="search-heading">
-      <div className="search-copy">
-        <p className="section-kicker">SEARCH</p>
-        <h2 id="search-heading">施設を検索</h2>
-        <p>
-          コード検索は該当データだけを取得します。名称検索では初回のみ全国の検索索引を読み込みます。
-        </p>
-      </div>
+      <h2 id="search-heading" className="visually-hidden">
+        施設を検索
+      </h2>
 
       <form className="search-form" role="search" onSubmit={handleSubmit}>
-        <label htmlFor="search-input">医療機関名・医療機関コード</label>
         <div className="search-control">
           <input
             id="search-input"
@@ -156,8 +149,8 @@ export function SearchSection({ client, sources }: SearchSectionProps) {
             type="search"
             inputMode="search"
             autoComplete="off"
-            placeholder="例：さくら診療所 / 1310123456"
-            aria-describedby="search-hint"
+            aria-label="医療機関名・医療機関コード"
+            placeholder="医療機関名または医療機関コード"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
@@ -165,14 +158,13 @@ export function SearchSection({ client, sources }: SearchSectionProps) {
             検索する
           </button>
         </div>
-        <p id="search-hint" className="hint">
-          医療機関コードは都道府県番号2桁＋点数表番号1桁＋機関コード7桁の10桁です。
-        </p>
       </form>
 
-      <p className="search-state" role="status" aria-live="polite">
-        {status}
-      </p>
+      {status && (
+        <p className="search-state" role="status" aria-live="polite">
+          {status}
+        </p>
+      )}
       <div className="results" aria-live="polite">
         {view.kind === "names" &&
           view.matches.map((tuple) => (
