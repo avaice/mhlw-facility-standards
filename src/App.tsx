@@ -52,12 +52,6 @@ export function App() {
         <SearchSection client={client} sources={manifest?.sources ?? []} />
         <DataStatusPanel manifest={manifest} state={manifestState} />
       </main>
-
-      <footer>
-        <p>
-          住所は公式名簿に記載された情報を収録しています。電話番号は収録していません。
-        </p>
-      </footer>
     </>
   );
 }
