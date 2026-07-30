@@ -1,6 +1,9 @@
 import { Link, normalizePathname, useRouter } from "neouter";
 import { useEffect, type ReactNode } from "react";
 import { searchHref, updatesHref, updatesPattern } from "../lib/routes";
+import { SquareArrowUpRight } from "lucide-react";
+
+const REPOSITORY_URL = "https://github.com/avaice/mhlw-facility-standards";
 
 export function Layout({ children }: { children: ReactNode }) {
   const [location] = useRouter();
@@ -25,6 +28,17 @@ export function Layout({ children }: { children: ReactNode }) {
             </Link>
             <Link href={updatesHref} className={navClass(isUpdates)}>
               データ更新日時
+            </Link>
+            <Link
+              href={REPOSITORY_URL}
+              target="_blank"
+              rel="noreferrer"
+              className={navClass(false)}
+            >
+              <span className="flex items-center gap-1">
+                <SquareArrowUpRight className="size-3" />
+                GitHub
+              </span>
             </Link>
           </nav>
         </div>

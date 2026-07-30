@@ -6,6 +6,7 @@ import { formatNumber } from "../lib/format";
 import { categoryLabels } from "../lib/labels";
 import { facilityHref, searchHref } from "../lib/routes";
 import type { FacilitySearchTuple } from "../lib/types";
+import { Loader2, Search } from "lucide-react";
 
 const RESULT_LIMIT = 50;
 const QUERY_PARAMS = { q: "string" } as const;
@@ -92,15 +93,18 @@ export function SearchPage() {
         />
         <button
           type="submit"
-          className="bg-accent px-6 py-2 text-base text-white"
+          className="bg-accent hover:bg-accent-dark active:opacity-90 px-6 py-2 text-base text-white"
         >
-          検索
+          <span className="flex items-center gap-1">
+            <Search className="size-3" />
+            検索
+          </span>
         </button>
       </form>
 
       <div aria-live="polite" className="mt-6">
         {state.kind === "loading" && (
-          <p className="text-sm text-slate-500">検索中</p>
+          <Loader2 className="size-4 text-slate-500 animate-spin" />
         )}
 
         {state.kind === "message" && (

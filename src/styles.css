@@ -7,6 +7,7 @@
     system-ui, sans-serif;
   --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
   --color-accent: #ff4500;
+  --color-accent-dark: #e63e00;
 }
 
 @layer base {
