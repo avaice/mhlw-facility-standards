@@ -17,6 +17,7 @@
     "discover": "tsx updater/cli.ts discover"
   },
   "dependencies": {
+    "neouter": "^0.5.1",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },
