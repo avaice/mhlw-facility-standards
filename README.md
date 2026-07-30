@@ -1,6 +1,6 @@
 # 医療機関施設基準 Static API
 
-地方厚生（支）局が公開する「届出受理医療機関名簿」のExcel/ZIPを集約し、医療機関名または10桁の保険医療機関コードから施設基準を検索できる静的サイトとJSONを生成するNode.js + TypeScriptプロジェクトです。
+地方厚生（支）局が公開する「届出受理医療機関名簿」のExcel/ZIPを集約し、医療機関名または10桁の保険医療機関コードから施設基準を検索できる静的サイトとJSONを生成するプロジェクトです。
 
 ## できること
 
@@ -13,6 +13,31 @@
 - GitHub Actionsで毎月15日に更新
 - GitHub Pagesへ検索ページと静的JSONをデプロイ
 
+## アーキテクチャ
+
+役割ごとにディレクトリを分離しています。
+
+```text
+.
+├── index.html          # 検索ページのエントリ（Vite）
+├── src/                # フロントエンド（Vite + React + TypeScript）
+│   ├── main.tsx
+│   ├── App.tsx
+│   ├── components/     # 画面コンポーネント
+│   └── lib/            # データ検索ライブラリ（client.ts）と契約型
+├── updater/            # データ取得ツール（Node.js ETL、tsxで実行）
+│   ├── cli.ts
+│   ├── discovery.ts    # 公式ページからの最新ファイル検出
+│   ├── parser/         # Excel解析
+│   └── output.ts       # public/v1 への静的JSON出力
+└── public/
+    └── v1/             # updaterの出力データ（Viteがそのまま配信）
+```
+
+- `updater/` はNode.jsのみで完結し、フロントエンドのコードには依存しません。
+- 検索ライブラリ `src/lib/client.ts` はフロントエンド専用です（updaterでは使いません）。
+- `public/v1` のJSONスキーマが両者の契約です。契約型は `src/lib/types.ts`（利用側）と `updater/types.ts`（生成側）にあり、`schemaVersion` で互換性を管理します。
+
 ## 必要環境
 
 - Node.js 22以上
@@ -24,8 +49,21 @@
 npm ci
 npm run check
 npm test
+```
+
+検索ページの開発サーバーを起動する場合:
+
+```bash
+npm run dev
+```
+
+本番ビルド（`dist/` に検索ページと `public/` の静的JSONを出力）:
+
+```bash
 npm run build
 ```
+
+## データ更新（updater）
 
 公式ページからリンクだけを確認する場合:
 
@@ -94,20 +132,26 @@ GET /v1/facilities/1810.json
 
 ## TypeScriptクライアント
 
-10桁コードの検証、シャードの選択、カタログとの結合、キャッシュは `FacilityStandardsClient` が処理します。
+10桁コードの検証、シャードの選択、カタログとの結合、名称検索、キャッシュは `FacilityStandardsClient`（`src/lib/client.ts`）が処理します。検索ページ自身もこのクライアントを使っています。
 
 ```ts
-import { FacilityStandardsClient } from "./src/client.js";
+import { FacilityStandardsClient } from "./src/lib/client";
 
 const client = new FacilityStandardsClient({
   baseUrl: "https://example.github.io/your-repository",
 });
 
+// コード検索
 const facility = await client.get("1810115202");
 console.log(facility?.standards);
+
+// 名称検索（初回のみ全国索引を取得してキャッシュ）
+const { matches, totalMatchCount } = await client.searchByName("さくら", {
+  limit: 50,
+});
 ```
 
-戻り値には、医療機関コード、医科・歯科・薬局の区分、施設名・住所、施設基準の略称・名称・受理番号・算定開始日、基準日、取得元IDが含まれます。該当コードがない場合は `null` です。同じ先頭4桁のコードを続けて検索した場合、JSONシャードは再取得しません。
+`get()` の戻り値には、医療機関コード、医科・歯科・薬局の区分、施設名・住所、施設基準の略称・名称・受理番号・算定開始日、基準日、取得元IDが含まれます。該当コードがない場合は `null` です。同じ先頭4桁のコードを続けて検索した場合、JSONシャードは再取得しません。
 
 ## GitHub Actions
 
@@ -124,7 +168,7 @@ console.log(facility?.standards);
 
 ### GitHub Pages
 
-`.github/workflows/pages.yml` がTypeScript製の検索画面をビルドし、`public` ディレクトリをデプロイします。リポジトリの Settings → Pages → Source で `GitHub Actions` を選択してください。
+`.github/workflows/pages.yml` が検索ページをViteでビルドし、静的JSONごと `dist` ディレクトリをデプロイします。リポジトリの Settings → Pages → Source で `GitHub Actions` を選択してください。
 
 ## 取得元
 
