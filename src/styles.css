@@ -6,16 +6,28 @@
     "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", Meiryo,
     system-ui, sans-serif;
   --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  --color-accent: #ff4500;
 }
 
 @layer base {
   body {
     @apply bg-white font-sans text-slate-900 antialiased;
   }
-}
 
-body {
-  max-width: 800px;
-  margin: 0 auto;
-  padding: 36px 0;
+  /* 角丸を使わない直線的な見た目に統一する */
+  *,
+  *::before,
+  *::after {
+    border-radius: 0;
+  }
+
+  a:focus-visible,
+  button:focus-visible,
+  input:focus-visible {
+    @apply outline-accent outline-2 outline-offset-1;
+  }
+
+  input:focus {
+    @apply border-accent;
+  }
 }
