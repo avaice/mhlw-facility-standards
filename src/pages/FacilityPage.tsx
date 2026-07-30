@@ -120,6 +120,7 @@ export function FacilityPage() {
         <table className="w-full border-collapse text-sm">
           <thead>
             <tr className="border-y border-slate-300 bg-slate-50 text-left text-xs text-slate-600">
+              <th className="px-2 py-1.5 font-medium">略称</th>
               <th className="px-2 py-1.5 font-medium">施設基準</th>
               <th className="px-2 py-1.5 font-medium">受理番号</th>
               <th className="px-2 py-1.5 font-medium">算定開始年月日</th>
@@ -131,6 +132,9 @@ export function FacilityPage() {
                 key={`${standard.acceptanceNumber}-${index}`}
                 className="border-b border-slate-200"
               >
+                <td className="px-2 py-1.5 whitespace-nowrap text-slate-500">
+                  {standard.abbreviation ?? "—"}
+                </td>
                 <td className="px-2 py-1.5">
                   {standard.name ?? standard.abbreviation ?? "—"}
                 </td>
@@ -155,7 +159,7 @@ function MetaRow({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex gap-4 border-b border-slate-200 px-1 py-1.5">
       <dt className="w-32 shrink-0 text-slate-500">{label}</dt>
-      <dd className="min-w-0 flex-1 break-words">{children}</dd>
+      <dd className="min-w-0 flex-1 wrap-break-word">{children}</dd>
     </div>
   );
 }
