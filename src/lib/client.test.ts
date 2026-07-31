@@ -5,6 +5,9 @@ describe("FacilityStandardsClient", () => {
   it("10桁コードからシャードを選択し、同じシャードをキャッシュする", async () => {
     const fetchMock = vi.fn<typeof fetch>(async (input) => {
       const url = String(input);
+      if (url.includes("/changes/")) {
+        return new Response(null, { status: 404 });
+      }
       if (url.endsWith("/catalog.json")) {
         return new Response(
           JSON.stringify({
@@ -49,14 +52,18 @@ describe("FacilityStandardsClient", () => {
     expect((await client.get("1810115202"))?.standards[0]?.name).toBe(
       "外来感染対策向上加算",
     );
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(fetchMock).toHaveBeenCalledWith(
       "https://example.test/v1/facilities/1810.json",
     );
   });
 
   it("名称検索索引を一度だけ取得し、前方一致を優先して返す", async () => {
-    const fetchMock = vi.fn<typeof fetch>(async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      const url = String(input);
+      if (url.includes("/changes/")) {
+        return new Response(null, { status: 404 });
+      }
       return new Response(
         JSON.stringify({
           schemaVersion: 1,
@@ -83,8 +90,103 @@ describe("FacilityStandardsClient", () => {
     expect(result.matches[0]?.[1]).toBe("さくら診療所");
 
     await client.searchByName("うめだ");
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock).toHaveBeenCalledWith("https://example.test/v1/search.json");
+  });
+
+  it("月次名簿へ月内PDFの追加・辞退を適用し、原資料URLを返す", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      const url = String(input);
+      if (url.endsWith("/catalog.json")) {
+        return new Response(JSON.stringify({
+          schemaVersion: 1,
+          standards: {
+            old: { abbreviation: "旧基準", name: "旧施設基準" },
+            kept: { abbreviation: "継続", name: "継続施設基準" },
+          },
+        }));
+      }
+      if (url.includes("/changes/facilities/")) {
+        return new Response(JSON.stringify({
+          schemaVersion: 1,
+          baseAsOf: "2026-07-01",
+          latestAsOf: "2026-07-15",
+          prefix: "1810",
+          facilities: {
+            "1810115202": {
+              name: "テスト診療所",
+              address: "福井県福井市",
+              category: "medical",
+              events: [
+                {
+                  id: "remove-old",
+                  action: "remove",
+                  standardId: "old",
+                  standard: { abbreviation: "旧基準", name: "旧施設基準" },
+                  acceptanceNumber: "第1号",
+                  effectiveFrom: null,
+                  publishedAt: "2026-07-10",
+                  sourceId: "kinki",
+                  sourcePageUrl: "https://example.test/source",
+                  documentUrl: "https://example.test/remove.pdf",
+                  documentSha256: "a",
+                  page: 1,
+                },
+                {
+                  id: "add-new",
+                  action: "upsert",
+                  standardId: "new",
+                  standard: { abbreviation: "新基準", name: "新施設基準" },
+                  acceptanceNumber: "第2号",
+                  effectiveFrom: "2026-07-01",
+                  publishedAt: "2026-07-15",
+                  sourceId: "kinki",
+                  sourcePageUrl: "https://example.test/source",
+                  documentUrl: "https://example.test/add.pdf",
+                  documentSha256: "b",
+                  page: 2,
+                },
+              ],
+            },
+          },
+        }));
+      }
+      return new Response(JSON.stringify({
+        schemaVersion: 1,
+        asOf: "2026-07-01",
+        prefix: "1810",
+        facilities: {
+          "1810115202": {
+            name: "テスト診療所",
+            address: "福井県福井市",
+            category: "medical",
+            sourceIds: ["kinki"],
+            sourceDocuments: ["https://example.test/monthly.xlsx"],
+            standards: [
+              ["old", "第1号", "2026-06-01"],
+              ["kept", "第3号", "2026-06-01"],
+            ],
+          },
+        },
+      }));
+    });
+    const client = new FacilityStandardsClient({
+      baseUrl: "https://example.test",
+      fetch: fetchMock,
+    });
+
+    const facility = await client.get("1810115202");
+    expect(facility?.standards.map((standard) => standard.name)).toEqual([
+      "継続施設基準",
+      "新施設基準",
+    ]);
+    expect(facility?.asOf).toBe("2026-07-15");
+    expect(facility?.recentChangeCount).toBe(2);
+    expect(facility?.sourceDocuments.map((document) => document.url)).toEqual([
+      "https://example.test/add.pdf",
+      "https://example.test/monthly.xlsx",
+      "https://example.test/remove.pdf",
+    ]);
   });
 });
 

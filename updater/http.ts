@@ -79,6 +79,30 @@ export async function downloadDocument(
   };
 }
 
+export async function downloadTypedDocument<
+  T extends { documentUrl: string },
+>(document: T): Promise<T & { bytes: Buffer; sha256: string }> {
+  const url = assertAllowedUrl(document.documentUrl);
+  const response = await fetchWithRetry(url);
+  const contentLength = Number(response.headers.get("content-length") ?? "0");
+  if (contentLength > MAX_DOCUMENT_BYTES) {
+    throw new Error(
+      `${url.href} は上限 ${MAX_DOCUMENT_BYTES} bytes を超えています`,
+    );
+  }
+  const bytes = Buffer.from(await response.arrayBuffer());
+  if (bytes.byteLength > MAX_DOCUMENT_BYTES) {
+    throw new Error(
+      `${url.href} は上限 ${MAX_DOCUMENT_BYTES} bytes を超えています`,
+    );
+  }
+  return {
+    ...document,
+    bytes,
+    sha256: createHash("sha256").update(bytes).digest("hex"),
+  };
+}
+
 export async function mapWithConcurrency<T, U>(
   values: T[],
   concurrency: number,

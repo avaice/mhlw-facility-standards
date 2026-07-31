@@ -5,7 +5,6 @@ import {
   rm,
   writeFile,
 } from "node:fs/promises";
-import { createHash } from "node:crypto";
 import path from "node:path";
 import type {
   CompactFacilityRecord,
@@ -16,6 +15,7 @@ import type {
   StandardCatalog,
   StandardRecord,
 } from "./types.js";
+import { createStandardId } from "./standard.js";
 import { maxIsoDate } from "./utils/date.js";
 import { uniqueSorted } from "./utils/text.js";
 
@@ -65,11 +65,7 @@ export async function writeStaticData(
   };
 
   function standardId(standard: StandardRecord): string {
-    const definition = JSON.stringify([
-      standard.abbreviation,
-      standard.name,
-    ]);
-    const id = createHash("sha256").update(definition).digest("hex").slice(0, 16);
+    const id = createStandardId(standard);
     const existing = catalog.standards[id];
     const incoming = {
       abbreviation: standard.abbreviation,
@@ -94,6 +90,9 @@ export async function writeStaticData(
       address: record.facility.address,
       category: record.category,
       sourceIds: uniqueSorted(record.sources.map((source) => source.bureauId)),
+      sourceDocuments: uniqueSorted(
+        record.sources.map((source) => source.documentUrl),
+      ),
       standards: record.standards.map((standard) => [
         standardId(standard),
         standard.acceptanceNumber,

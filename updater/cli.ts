@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import path from "node:path";
+import { updateRecentData } from "./recent.js";
 import { discoverAllSources, updateData } from "./update.js";
 
 interface CliOptions {
@@ -43,6 +44,18 @@ async function main(): Promise<void> {
       console.error(message),
     );
     console.log(JSON.stringify(documents, null, 2));
+    return;
+  }
+  if (command === "update-recent") {
+    const options = parseOptions(args);
+    const result = await updateRecentData({
+      outputDirectory: options.outputDirectory,
+      onProgress: (message) => console.error(message),
+    });
+    for (const warning of result.warnings) {
+      console.warn(`warning: ${warning}`);
+    }
+    console.log(JSON.stringify(result.manifest, null, 2));
     return;
   }
   if (command !== "update") {

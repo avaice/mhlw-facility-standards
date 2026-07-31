@@ -60,7 +60,16 @@ export function parseJapaneseDate(value: unknown): string | null {
     /(令和|平成|昭和)\s*(元|\d{1,2})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日/,
   );
   if (!era) {
-    return null;
+    const abbreviatedReiwa = normalized.match(
+      /(?:R|R\.|R-)\s*(\d{1,2})[年./\-]\s*(\d{1,2})[月./\-]\s*(\d{1,2})日?/iu,
+    );
+    return abbreviatedReiwa
+      ? formatDate(
+          2018 + Number(abbreviatedReiwa[1]),
+          Number(abbreviatedReiwa[2]),
+          Number(abbreviatedReiwa[3]),
+        )
+      : null;
   }
 
   const base = ERA_BASE_YEAR[era[1] ?? ""];
@@ -81,6 +90,21 @@ export function extractAsOfDates(value: string): string[] {
     /(令和|平成|昭和)\s*(元|\d{1,2})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日\s*現在/g,
   );
 
+  const dates: string[] = [];
+  for (const match of matches) {
+    const date = parseJapaneseDate(match[0]);
+    if (date) {
+      dates.push(date);
+    }
+  }
+  return dates;
+}
+
+export function extractJapaneseDates(value: string): string[] {
+  const normalized = normalizeText(value);
+  const matches = normalized.matchAll(
+    /(?:(?:令和|平成|昭和)\s*(?:元|\d{1,2})\s*年\s*\d{1,2}\s*月\s*\d{1,2}\s*日)|(?:R\.?\s*\d{1,2}[年./\-]\s*\d{1,2}[月./\-]\s*\d{1,2}日?)|(?:\d{4}[年/\-.]\d{1,2}[月/\-.]\d{1,2}日?)/giu,
+  );
   const dates: string[] = [];
   for (const match of matches) {
     const date = parseJapaneseDate(match[0]);

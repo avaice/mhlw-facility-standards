@@ -10,6 +10,17 @@ export interface SourceDefinition {
   excludedSection: RegExp;
 }
 
+export type ChangeAction = "upsert" | "remove";
+
+export interface RecentSourceDefinition {
+  sourceId: string;
+  bureauName: string;
+  pageUrl: string;
+  prefectureCodeHint: string | null;
+  documentUrlPattern?: RegExp;
+  documentContextPattern?: RegExp;
+}
+
 export interface DiscoveredDocument {
   sourceId: string;
   bureauName: string;
@@ -20,7 +31,17 @@ export interface DiscoveredDocument {
   context: string;
 }
 
+export interface DiscoveredRecentDocument extends DiscoveredDocument {
+  action: ChangeAction;
+  prefectureCodeHint: string | null;
+}
+
 export interface DownloadedDocument extends DiscoveredDocument {
+  bytes: Buffer;
+  sha256: string;
+}
+
+export interface DownloadedRecentDocument extends DiscoveredRecentDocument {
   bytes: Buffer;
   sha256: string;
 }
@@ -108,6 +129,7 @@ export interface CompactFacilityRecord {
   address: string | null;
   category: FacilityCategory;
   sourceIds: string[];
+  sourceDocuments?: string[];
   standards: CompactStandardTuple[];
 }
 
@@ -135,4 +157,72 @@ export interface FacilitySearchIndex {
   asOf: string;
   facilityCount: number;
   facilities: FacilitySearchTuple[];
+}
+
+export interface FacilityChangeEvent {
+  id: string;
+  action: ChangeAction;
+  standardId: string;
+  standard: {
+    abbreviation: string | null;
+    name: string | null;
+  };
+  acceptanceNumber: string;
+  effectiveFrom: string | null;
+  publishedAt: string;
+  sourceId: string;
+  sourcePageUrl: string;
+  documentUrl: string;
+  documentSha256: string;
+  page: number;
+  extractionMethod: "text" | "ocr";
+}
+
+export interface FacilityChangeRecord {
+  medicalInstitutionCode: string;
+  name: string;
+  address: string | null;
+  category: FacilityCategory;
+  events: FacilityChangeEvent[];
+}
+
+export interface FacilityChangeShard {
+  schemaVersion: 1;
+  baseAsOf: string;
+  latestAsOf: string;
+  prefix: string;
+  facilities: Record<
+    string,
+    Omit<FacilityChangeRecord, "medicalInstitutionCode">
+  >;
+}
+
+export interface ChangeSearchIndex {
+  schemaVersion: 1;
+  generatedAt: string;
+  baseAsOf: string;
+  latestAsOf: string;
+  facilities: FacilitySearchTuple[];
+}
+
+export interface ChangeManifestSource {
+  id: string;
+  bureauName: string;
+  pageUrls: string[];
+  documents: Array<{
+    url: string;
+    sha256: string;
+    publishedAt: string;
+    action: ChangeAction;
+  }>;
+}
+
+export interface ChangeManifest {
+  schemaVersion: 1;
+  generatedAt: string;
+  baseAsOf: string;
+  latestAsOf: string;
+  facilityCount: number;
+  eventCount: number;
+  sources: ChangeManifestSource[];
 }

@@ -91,7 +91,12 @@ export function FacilityPage() {
         <MetaRow label="区分">{categoryLabels[facility.category]}</MetaRow>
         <MetaRow label="所在地">{facility.facility.address ?? "—"}</MetaRow>
         <MetaRow label="データ基準日">{formatDate(facility.asOf)}</MetaRow>
-        <MetaRow label="データ取得日時">
+        {facility.recentChangeCount > 0 ? (
+          <MetaRow label="月内差分">
+            PDF掲載分を{formatNumber(facility.recentChangeCount)}件反映
+          </MetaRow>
+        ) : null}
+        <MetaRow label="月次名簿 取得日時">
           {manifest ? formatDateTime(manifest.generatedAt) : "—"}
         </MetaRow>
         <MetaRow label="出典">
@@ -102,6 +107,38 @@ export function FacilityPage() {
               {sources.map((source) => (
                 <li key={source.id}>
                   <SourceLink source={source} />
+                </li>
+              ))}
+            </ul>
+          )}
+        </MetaRow>
+        <MetaRow label="原資料">
+          {facility.sourceDocuments.length === 0 ? (
+            "—"
+          ) : (
+            <ul className="space-y-1">
+              {facility.sourceDocuments.map((document) => (
+                <li key={document.url}>
+                  <a
+                    href={
+                      document.page
+                        ? `${document.url}#page=${document.page}`
+                        : document.url
+                    }
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-accent break-all hover:underline"
+                  >
+                    {sourceDocumentLabel(document.url)}
+                  </a>
+                  <span className="ml-2 text-slate-500">
+                    {document.kind === "change" ? "月内差分PDF" : "月次名簿"}
+                    {document.publishedAt
+                      ? ` ${formatDate(document.publishedAt)}`
+                      : ""}
+                    {document.page ? ` ${document.page}頁` : ""}
+                    {document.extractionMethod === "ocr" ? "（OCR）" : ""}
+                  </span>
                 </li>
               ))}
             </ul>
@@ -153,6 +190,14 @@ export function FacilityPage() {
       </div>
     </>
   );
+}
+
+function sourceDocumentLabel(url: string): string {
+  try {
+    return decodeURIComponent(new URL(url).pathname.split("/").at(-1) ?? url);
+  } catch {
+    return url;
+  }
 }
 
 function MetaRow({ label, children }: { label: string; children: ReactNode }) {
