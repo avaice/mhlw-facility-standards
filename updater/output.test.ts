@@ -1,4 +1,10 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { writeStaticData } from "./output.js";
@@ -56,6 +62,11 @@ describe("writeStaticData", () => {
     const output = path.join(root, "v1");
 
     try {
+      await mkdir(path.join(output, "changes"), { recursive: true });
+      await writeFile(
+        path.join(output, "changes", "sentinel.json"),
+        "existing changes",
+      );
       await writeStaticData([record], manifest, output);
       const json = JSON.parse(
         await readFile(path.join(output, "facilities", "1810.json"), "utf8"),
@@ -81,6 +92,9 @@ describe("writeStaticData", () => {
       expect(search.facilities).toEqual([
         ["1810115202", "テスト診療所", "福井県福井市", "medical"],
       ]);
+      expect(
+        await readFile(path.join(output, "changes", "sentinel.json"), "utf8"),
+      ).toBe("existing changes");
     } finally {
       await rm(root, { recursive: true, force: true });
     }

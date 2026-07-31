@@ -2,7 +2,6 @@ import type {
   ChangeManifest,
   ChangeSearchIndex,
   DataManifest,
-  FacilityChangeEvent,
   FacilityChangeShard,
   FacilityLookupResult,
   FacilitySearchIndex,
@@ -10,6 +9,7 @@ import type {
   FacilityShard,
   StandardCatalog,
 } from "./types";
+import { applyChangeEvent } from "../../shared/apply-change-event.js";
 
 export interface FacilityStandardsClientOptions {
   baseUrl: string;
@@ -103,8 +103,15 @@ export class FacilityStandardsClient {
         (a.action === b.action ? 0 : a.action === "remove" ? -1 : 1) ||
         a.id.localeCompare(b.id),
     );
+    let recentChangeCount = 0;
+    let unresolvedChangeCount = 0;
     for (const event of recentEvents) {
-      applyChangeEvent(standardEntries, event);
+      const result = applyChangeEvent(standardEntries, event);
+      if (result === "applied") {
+        recentChangeCount += 1;
+      } else if (result === "unresolved") {
+        unresolvedChangeCount += 1;
+      }
     }
 
     const sourceIds = new Set(compact?.sourceIds ?? []);
@@ -131,17 +138,19 @@ export class FacilityStandardsClient {
         extractionMethod: event.extractionMethod,
       });
     }
-    const asOf = [shard.asOf, changes.latestAsOf].filter(Boolean).sort().at(-1) ??
-      "";
+    const asOf = [
+      shard.asOf,
+      ...recentEvents.map((event) => event.publishedAt),
+    ].filter(Boolean).sort().at(-1) ?? "";
 
     return {
       medicalInstitutionCode: code,
       localCode: code.slice(3),
       prefectureCode: code.slice(0, 2),
-      category: changeRecord?.category ?? compact!.category,
+      category: compact?.category ?? changeRecord!.category,
       facility: {
-        name: changeRecord?.name ?? compact!.name,
-        address: changeRecord?.address ?? compact?.address ?? null,
+        name: compact?.name ?? changeRecord!.name,
+        address: compact ? compact.address : changeRecord?.address ?? null,
       },
       standards: standardEntries.map((entry) => entry.record),
       asOf,
@@ -149,7 +158,8 @@ export class FacilityStandardsClient {
       sourceDocuments: [...sourceDocuments.values()].sort((a, b) =>
         a.url.localeCompare(b.url)
       ),
-      recentChangeCount: recentEvents.length,
+      recentChangeCount,
+      unresolvedChangeCount,
     };
   }
 
@@ -201,7 +211,9 @@ export class FacilityStandardsClient {
       index.facilities.map((facility) => [facility[0], facility]),
     );
     for (const facility of changes.facilities) {
-      facilities.set(facility[0], facility);
+      if (!facilities.has(facility[0])) {
+        facilities.set(facility[0], facility);
+      }
     }
     const matches = [...facilities.values()]
       .filter(([, name]) => normalizeFacilityName(name).includes(normalized))
@@ -355,38 +367,4 @@ export class FacilityStandardsClient {
     }
     return (await response.json()) as T;
   }
-}
-
-function applyChangeEvent(
-  standards: Array<{
-    standardId: string;
-    record: FacilityLookupResult["standards"][number];
-  }>,
-  event: FacilityChangeEvent,
-): void {
-  const matches = (entry: (typeof standards)[number]) =>
-    entry.standardId === event.standardId ||
-    (Boolean(event.standard.abbreviation) &&
-      entry.record.abbreviation === event.standard.abbreviation);
-  if (event.action === "remove") {
-    for (let index = standards.length - 1; index >= 0; index -= 1) {
-      if (matches(standards[index]!)) {
-        standards.splice(index, 1);
-      }
-    }
-    return;
-  }
-  for (let index = standards.length - 1; index >= 0; index -= 1) {
-    if (matches(standards[index]!)) {
-      standards.splice(index, 1);
-    }
-  }
-  standards.push({
-    standardId: event.standardId,
-    record: {
-      ...event.standard,
-      acceptanceNumber: event.acceptanceNumber,
-      effectiveFrom: event.effectiveFrom,
-    },
-  });
 }

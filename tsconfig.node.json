@@ -15,5 +15,5 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["updater/**/*.ts", "vite.config.ts"]
+  "include": ["updater/**/*.ts", "shared/**/*.ts", "vite.config.ts"]
 }

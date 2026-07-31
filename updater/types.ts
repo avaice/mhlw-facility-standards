@@ -12,6 +12,23 @@ export interface SourceDefinition {
 
 export type ChangeAction = "upsert" | "remove";
 
+export type ExtractionMethod = "text" | "ocr" | "ocr-reviewed";
+
+export type ChangeReviewStatus =
+  | "automatic"
+  | "manual-reviewed"
+  | "needs-review";
+
+export type ChangeReviewReason =
+  | "unverified-facility-identity"
+  | "missing-standard-abbreviation"
+  | "unknown-standard"
+  | "ambiguous-standard"
+  | "multiple-base-records"
+  | "missing-effective-date"
+  | "missing-acceptance-number"
+  | "unreviewed-ocr";
+
 export interface RecentSourceDefinition {
   sourceId: string;
   bureauName: string;
@@ -175,7 +192,9 @@ export interface FacilityChangeEvent {
   documentUrl: string;
   documentSha256: string;
   page: number;
-  extractionMethod: "text" | "ocr";
+  extractionMethod: ExtractionMethod;
+  reviewStatus?: ChangeReviewStatus;
+  reviewReasons?: ChangeReviewReason[];
 }
 
 export interface FacilityChangeRecord {
@@ -208,6 +227,7 @@ export interface ChangeSearchIndex {
 export interface ChangeManifestSource {
   id: string;
   bureauName: string;
+  baseAsOf: string;
   pageUrls: string[];
   documents: Array<{
     url: string;
@@ -224,5 +244,12 @@ export interface ChangeManifest {
   latestAsOf: string;
   facilityCount: number;
   eventCount: number;
+  quality: {
+    status: "verified" | "needs-review";
+    retainedDocumentCount: number;
+    reviewedOcrDocumentCount: number;
+    unresolvedEventCount: number;
+    unresolvedByReason: Record<ChangeReviewReason, number>;
+  };
   sources: ChangeManifestSource[];
 }

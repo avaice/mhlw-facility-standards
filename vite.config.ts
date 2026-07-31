@@ -30,7 +30,11 @@ export default defineConfig({
   base,
   plugins: [react(), tailwindcss(), spaFallback()],
   test: {
-    include: ["src/**/*.test.ts", "updater/**/*.test.ts"],
+    include: [
+      "src/**/*.test.ts",
+      "updater/**/*.test.ts",
+      "shared/**/*.test.ts",
+    ],
     environment: "node",
   },
 });

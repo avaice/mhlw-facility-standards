@@ -1,4 +1,7 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { extractWorkbooks } from "./archive.js";
+import { SOURCE_PREFECTURE_CODES } from "./config/prefectures.js";
 import { SOURCES } from "./config/sources.js";
 import { discoverDocuments } from "./discovery.js";
 import {
@@ -11,11 +14,16 @@ import {
   mergeFacilityRecords,
   parseWorkbook,
 } from "./parser/workbook.js";
+import {
+  type MonthlyQualityBaseline,
+  validateMonthlyData,
+} from "./quality.js";
 import type {
   DataManifest,
   DiscoveredDocument,
   DownloadedDocument,
   FacilityRecord,
+  FacilitySearchIndex,
   SourceDefinition,
 } from "./types.js";
 import { maxIsoDate } from "./utils/date.js";
@@ -25,6 +33,34 @@ export interface UpdateOptions {
   minimumFacilityCount?: number;
   sources?: SourceDefinition[];
   onProgress?: (message: string) => void;
+}
+
+async function readJsonIfExists<T>(file: string): Promise<T | null> {
+  try {
+    return JSON.parse(await readFile(file, "utf8")) as T;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return null;
+    }
+    throw error;
+  }
+}
+
+async function loadPreviousSnapshot(
+  outputDirectory: string,
+): Promise<MonthlyQualityBaseline | null> {
+  const output = path.resolve(outputDirectory);
+  const [manifest, search] = await Promise.all([
+    readJsonIfExists<DataManifest>(path.join(output, "manifest.json")),
+    readJsonIfExists<FacilitySearchIndex>(path.join(output, "search.json")),
+  ]);
+  if (!manifest && !search) {
+    return null;
+  }
+  if (!manifest || !search) {
+    throw new Error("前回スナップショットのmanifestまたは検索索引がありません");
+  }
+  return { manifest, search };
 }
 
 export interface UpdateResult {
@@ -137,6 +173,7 @@ function validateResult(
 export async function updateData(options: UpdateOptions): Promise<UpdateResult> {
   const sources = options.sources ?? SOURCES;
   const minimumFacilityCount = options.minimumFacilityCount ?? 100_000;
+  const previousSnapshot = await loadPreviousSnapshot(options.outputDirectory);
 
   progress(options, "公式掲載ページから最新ファイルを検出");
   const discovered = await discoverAllSources(sources, (message) =>
@@ -170,6 +207,11 @@ export async function updateData(options: UpdateOptions): Promise<UpdateResult> 
     sources,
     minimumFacilityCount,
   );
+  validateMonthlyData(records, previousSnapshot, {
+    expectedPrefectureCodes: [...new Set(sources.flatMap((source) =>
+      SOURCE_PREFECTURE_CODES[source.id] ?? []
+    ))],
+  });
   const manifest = buildManifest(records, documents, sources);
   await writeStaticData(records, manifest, options.outputDirectory);
 
