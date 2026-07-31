@@ -29,7 +29,15 @@ const record: FacilityRecord = {
     },
   ],
   asOf: "2026-07-01",
-  sources: [],
+  sources: [{
+    bureauId: "kinki",
+    bureauName: "近畿厚生局",
+    pageUrl: "https://kouseikyoku.mhlw.go.jp/kinki/source.html",
+    documentUrl: "https://kouseikyoku.mhlw.go.jp/kinki/source.xlsx",
+    documentSha256: "fixture",
+    workbook: "source.xlsx",
+    worksheet: "医科",
+  }],
 };
 
 const manifest: DataManifest = {
@@ -55,6 +63,9 @@ describe("writeStaticData", () => {
       expect(json.facilities["1810115202"]?.name).toBe(
         "テスト診療所",
       );
+      expect(json.facilities["1810115202"]?.sourceDocuments).toEqual([
+        "https://kouseikyoku.mhlw.go.jp/kinki/source.xlsx",
+      ]);
       const catalog = JSON.parse(
         await readFile(path.join(output, "catalog.json"), "utf8"),
       ) as StandardCatalog;

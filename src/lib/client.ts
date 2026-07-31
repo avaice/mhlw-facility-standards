@@ -1,5 +1,9 @@
 import type {
+  ChangeManifest,
+  ChangeSearchIndex,
   DataManifest,
+  FacilityChangeEvent,
+  FacilityChangeShard,
   FacilityLookupResult,
   FacilitySearchIndex,
   FacilitySearchTuple,
@@ -48,9 +52,12 @@ export class FacilityStandardsClient {
   readonly #baseUrl: string;
   readonly #fetch: typeof globalThis.fetch;
   readonly #shards = new Map<string, Promise<FacilityShard>>();
+  readonly #changeShards = new Map<string, Promise<FacilityChangeShard>>();
   #catalog: Promise<StandardCatalog> | null = null;
   #manifest: Promise<DataManifest> | null = null;
   #searchIndex: Promise<FacilitySearchIndex> | null = null;
+  #changeSearchIndex: Promise<ChangeSearchIndex> | null = null;
+  #changeManifest: Promise<ChangeManifest | null> | null = null;
 
   constructor(options: FacilityStandardsClientOptions) {
     this.#baseUrl = options.baseUrl.replace(/\/+$/, "");
@@ -63,39 +70,86 @@ export class FacilityStandardsClient {
   ): Promise<FacilityLookupResult | null> {
     const code = normalizeMedicalInstitutionCode(medicalInstitutionCode);
     const prefix = code.slice(0, 4);
-    const [shard, catalog] = await Promise.all([
+    const [shard, catalog, changes] = await Promise.all([
       this.#getShard(prefix),
       this.#getCatalog(),
+      this.#getChangeShard(prefix),
     ]);
     const compact = shard.facilities[code];
-    if (!compact) {
+    const changeRecord = changes.facilities[code];
+    if (!compact && !changeRecord) {
       return null;
     }
+
+    const standardEntries = (compact?.standards ?? []).map(
+      ([standardId, acceptanceNumber, effectiveFrom]) => {
+        const definition = catalog.standards[standardId] ?? {
+          abbreviation: null,
+          name: null,
+        };
+        return {
+          standardId,
+          record: {
+            ...definition,
+            acceptanceNumber,
+            effectiveFrom,
+          },
+        };
+      },
+    );
+    const recentEvents = [...(changeRecord?.events ?? [])].sort(
+      (a, b) =>
+        a.publishedAt.localeCompare(b.publishedAt) ||
+        (a.action === b.action ? 0 : a.action === "remove" ? -1 : 1) ||
+        a.id.localeCompare(b.id),
+    );
+    for (const event of recentEvents) {
+      applyChangeEvent(standardEntries, event);
+    }
+
+    const sourceIds = new Set(compact?.sourceIds ?? []);
+    const sourceDocuments = new Map<
+      string,
+      FacilityLookupResult["sourceDocuments"][number]
+    >();
+    for (const url of compact?.sourceDocuments ?? []) {
+      sourceDocuments.set(url, {
+        url,
+        kind: "snapshot",
+        publishedAt: shard.asOf || null,
+        page: null,
+        extractionMethod: null,
+      });
+    }
+    for (const event of recentEvents) {
+      sourceIds.add(event.sourceId);
+      sourceDocuments.set(event.documentUrl, {
+        url: event.documentUrl,
+        kind: "change",
+        publishedAt: event.publishedAt,
+        page: event.page,
+        extractionMethod: event.extractionMethod,
+      });
+    }
+    const asOf = [shard.asOf, changes.latestAsOf].filter(Boolean).sort().at(-1) ??
+      "";
 
     return {
       medicalInstitutionCode: code,
       localCode: code.slice(3),
       prefectureCode: code.slice(0, 2),
-      category: compact.category,
+      category: changeRecord?.category ?? compact!.category,
       facility: {
-        name: compact.name,
-        address: compact.address,
+        name: changeRecord?.name ?? compact!.name,
+        address: changeRecord?.address ?? compact?.address ?? null,
       },
-      standards: compact.standards.map(
-        ([standardId, acceptanceNumber, effectiveFrom]) => {
-          const definition = catalog.standards[standardId] ?? {
-            abbreviation: null,
-            name: null,
-          };
-          return {
-            ...definition,
-            acceptanceNumber,
-            effectiveFrom,
-          };
-        },
+      standards: standardEntries.map((entry) => entry.record),
+      asOf,
+      sourceIds: [...sourceIds].sort(),
+      sourceDocuments: [...sourceDocuments.values()].sort((a, b) =>
+        a.url.localeCompare(b.url)
       ),
-      asOf: shard.asOf,
-      sourceIds: compact.sourceIds,
+      recentChangeCount: recentEvents.length,
     };
   }
 
@@ -112,17 +166,44 @@ export class FacilityStandardsClient {
     return this.#manifest;
   }
 
+  async getChangeManifest(): Promise<ChangeManifest | null> {
+    if (!this.#changeManifest) {
+      this.#changeManifest = this.#fetchOptionalJson<ChangeManifest | null>(
+        "/v1/changes/manifest.json",
+        null,
+        "月内差分の更新情報",
+      );
+      this.#changeManifest.catch(() => {
+        this.#changeManifest = null;
+      });
+    }
+    return this.#changeManifest;
+  }
+
   async searchByName(
     query: string,
     options: FacilityNameSearchOptions = {},
   ): Promise<FacilityNameSearchResult> {
     const normalized = normalizeFacilityName(query);
-    const index = await this.#getSearchIndex();
+    const [index, changes] = await Promise.all([
+      this.#getSearchIndex(),
+      this.#getChangeSearchIndex(),
+    ]);
     if (!normalized) {
-      return { matches: [], totalMatchCount: 0, asOf: index.asOf };
+      return {
+        matches: [],
+        totalMatchCount: 0,
+        asOf: [index.asOf, changes.latestAsOf].sort().at(-1) ?? index.asOf,
+      };
     }
 
-    const matches = index.facilities
+    const facilities = new Map(
+      index.facilities.map((facility) => [facility[0], facility]),
+    );
+    for (const facility of changes.facilities) {
+      facilities.set(facility[0], facility);
+    }
+    const matches = [...facilities.values()]
       .filter(([, name]) => normalizeFacilityName(name).includes(normalized))
       .sort((a, b) => {
         const aStarts = normalizeFacilityName(a[1]).startsWith(normalized);
@@ -137,15 +218,18 @@ export class FacilityStandardsClient {
       matches:
         options.limit === undefined ? matches : matches.slice(0, options.limit),
       totalMatchCount: matches.length,
-      asOf: index.asOf,
+      asOf: [index.asOf, changes.latestAsOf].sort().at(-1) ?? index.asOf,
     };
   }
 
   clearCache(): void {
     this.#shards.clear();
+    this.#changeShards.clear();
     this.#catalog = null;
     this.#manifest = null;
     this.#searchIndex = null;
+    this.#changeSearchIndex = null;
+    this.#changeManifest = null;
   }
 
   #getCatalog(): Promise<StandardCatalog> {
@@ -172,6 +256,26 @@ export class FacilityStandardsClient {
       });
     }
     return this.#searchIndex;
+  }
+
+  #getChangeSearchIndex(): Promise<ChangeSearchIndex> {
+    if (!this.#changeSearchIndex) {
+      this.#changeSearchIndex = this.#fetchOptionalJson<ChangeSearchIndex>(
+        "/v1/changes/search.json",
+        {
+          schemaVersion: 1,
+          generatedAt: "",
+          baseAsOf: "",
+          latestAsOf: "",
+          facilities: [],
+        },
+        "月内差分の名称検索索引",
+      );
+      this.#changeSearchIndex.catch(() => {
+        this.#changeSearchIndex = null;
+      });
+    }
+    return this.#changeSearchIndex;
   }
 
   #getShard(prefix: string): Promise<FacilityShard> {
@@ -204,6 +308,27 @@ export class FacilityStandardsClient {
     return request;
   }
 
+  #getChangeShard(prefix: string): Promise<FacilityChangeShard> {
+    const cached = this.#changeShards.get(prefix);
+    if (cached) {
+      return cached;
+    }
+    const request = this.#fetchOptionalJson<FacilityChangeShard>(
+      `/v1/changes/facilities/${prefix}.json`,
+      {
+        schemaVersion: 1,
+        baseAsOf: "",
+        latestAsOf: "",
+        prefix,
+        facilities: {},
+      },
+      "月内差分データ",
+    );
+    this.#changeShards.set(prefix, request);
+    request.catch(() => this.#changeShards.delete(prefix));
+    return request;
+  }
+
   async #fetchJson<T>(path: string, label: string): Promise<T> {
     const response = await this.#fetch(`${this.#baseUrl}${path}`);
     if (!response.ok) {
@@ -213,4 +338,55 @@ export class FacilityStandardsClient {
     }
     return (await response.json()) as T;
   }
+
+  async #fetchOptionalJson<T>(
+    path: string,
+    fallback: T,
+    label: string,
+  ): Promise<T> {
+    const response = await this.#fetch(`${this.#baseUrl}${path}`);
+    if (response.status === 404) {
+      return fallback;
+    }
+    if (!response.ok) {
+      throw new Error(
+        `${label}の取得に失敗しました: ${response.status} ${response.statusText}`,
+      );
+    }
+    return (await response.json()) as T;
+  }
+}
+
+function applyChangeEvent(
+  standards: Array<{
+    standardId: string;
+    record: FacilityLookupResult["standards"][number];
+  }>,
+  event: FacilityChangeEvent,
+): void {
+  const matches = (entry: (typeof standards)[number]) =>
+    entry.standardId === event.standardId ||
+    (Boolean(event.standard.abbreviation) &&
+      entry.record.abbreviation === event.standard.abbreviation);
+  if (event.action === "remove") {
+    for (let index = standards.length - 1; index >= 0; index -= 1) {
+      if (matches(standards[index]!)) {
+        standards.splice(index, 1);
+      }
+    }
+    return;
+  }
+  for (let index = standards.length - 1; index >= 0; index -= 1) {
+    if (matches(standards[index]!)) {
+      standards.splice(index, 1);
+    }
+  }
+  standards.push({
+    standardId: event.standardId,
+    record: {
+      ...event.standard,
+      acceptanceNumber: event.acceptanceNumber,
+      effectiveFrom: event.effectiveFrom,
+    },
+  });
 }

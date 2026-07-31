@@ -1,10 +1,10 @@
-name: Update facility standards
+name: Update recent facility standard changes
 
 on:
   workflow_dispatch:
   schedule:
-    # 毎月15日 09:00 JST。各局の月初〜10日頃の更新を待って取得する。
-    - cron: "0 0 15 * *"
+    # 各局の月2回前後の掲載日を広く拾う。02:00 UTC = 11:00 JST。
+    - cron: "0 2 2,9,16,23,28 * *"
 
 permissions:
   contents: write
@@ -16,7 +16,7 @@ concurrency:
 jobs:
   update:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
@@ -36,19 +36,19 @@ jobs:
           npm run check
           npm test
 
-      - name: Update static JSON
-        run: npm run update
+      - name: Update recent PDF changes
+        run: npm run update:recent
 
       - name: Commit changed data
         shell: bash
         run: |
-          if [[ -z "$(git status --porcelain -- public/v1)" ]]; then
-            echo "No data changes"
+          if [[ -z "$(git status --porcelain -- public/v1/changes)" ]]; then
+            echo "No recent data changes"
             exit 0
           fi
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add public/v1
-          git commit -m "chore(data): update facility standards"
+          git add public/v1/changes
+          git commit -m "chore(data): update recent facility standard changes"
           git push

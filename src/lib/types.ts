@@ -21,6 +21,7 @@ export interface CompactFacilityRecord {
   address: string | null;
   category: FacilityCategory;
   sourceIds: string[];
+  sourceDocuments?: string[];
   standards: CompactStandardTuple[];
 }
 
@@ -79,6 +80,78 @@ export interface DataManifest {
   sources: SourceManifestEntry[];
 }
 
+export type ChangeAction = "upsert" | "remove";
+
+export interface FacilityChangeEvent {
+  id: string;
+  action: ChangeAction;
+  standardId: string;
+  standard: {
+    abbreviation: string | null;
+    name: string | null;
+  };
+  acceptanceNumber: string;
+  effectiveFrom: string | null;
+  publishedAt: string;
+  sourceId: string;
+  sourcePageUrl: string;
+  documentUrl: string;
+  documentSha256: string;
+  page: number;
+  extractionMethod: "text" | "ocr";
+}
+
+export interface CompactFacilityChangeRecord {
+  name: string;
+  address: string | null;
+  category: FacilityCategory;
+  events: FacilityChangeEvent[];
+}
+
+export interface FacilityChangeShard {
+  schemaVersion: 1;
+  baseAsOf: string;
+  latestAsOf: string;
+  prefix: string;
+  facilities: Record<string, CompactFacilityChangeRecord>;
+}
+
+export interface ChangeSearchIndex {
+  schemaVersion: 1;
+  generatedAt: string;
+  baseAsOf: string;
+  latestAsOf: string;
+  facilities: FacilitySearchTuple[];
+}
+
+export interface ChangeManifest {
+  schemaVersion: 1;
+  generatedAt: string;
+  baseAsOf: string;
+  latestAsOf: string;
+  facilityCount: number;
+  eventCount: number;
+  sources: Array<{
+    id: string;
+    bureauName: string;
+    pageUrls: string[];
+    documents: Array<{
+      url: string;
+      sha256: string;
+      publishedAt: string;
+      action: ChangeAction;
+    }>;
+  }>;
+}
+
+export interface FacilitySourceDocument {
+  url: string;
+  kind: "snapshot" | "change";
+  publishedAt: string | null;
+  page: number | null;
+  extractionMethod: "text" | "ocr" | null;
+}
+
 export interface FacilityLookupResult {
   medicalInstitutionCode: string;
   localCode: string;
@@ -91,4 +164,6 @@ export interface FacilityLookupResult {
   standards: StandardRecord[];
   asOf: string;
   sourceIds: string[];
+  sourceDocuments: FacilitySourceDocument[];
+  recentChangeCount: number;
 }
