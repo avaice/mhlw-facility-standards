@@ -9,7 +9,10 @@ import type {
   StandardRecord,
   WorkbookDocument,
 } from "../types.js";
-import { parseJapaneseDate } from "../utils/date.js";
+import {
+  extractAsOfDates,
+  parseJapaneseDate,
+} from "../utils/date.js";
 import {
   compactText,
   inferCategory,
@@ -470,6 +473,19 @@ export async function parseWorkbook(
   const warnings: string[] = [];
 
   await readXlsxWorksheets(document.bytes, (worksheet) => {
+    const workbookAsOfDates = extractAsOfDates(
+      worksheetContext(document, worksheet),
+    );
+    if (
+      workbookAsOfDates.length > 0 &&
+      !workbookAsOfDates.includes(document.source.asOf)
+    ) {
+      throw new Error(
+        `${document.fileName}/${worksheet.name}: 掲載ページの基準日 ` +
+          `${document.source.asOf} とワークブック内の基準日 ` +
+          `${[...new Set(workbookAsOfDates)].join(", ")} が一致しません`,
+      );
+    }
     const parsed = parseWorksheet(document, worksheet);
     warnings.push(...parsed.warnings);
     for (const record of parsed.records) {

@@ -2,6 +2,7 @@
 import path from "node:path";
 import { updateRecentData } from "./recent.js";
 import { discoverAllSources, updateData } from "./update.js";
+import { verifyStaticData } from "./verify.js";
 
 interface CliOptions {
   outputDirectory: string;
@@ -56,6 +57,15 @@ async function main(): Promise<void> {
       console.warn(`warning: ${warning}`);
     }
     console.log(JSON.stringify(result.manifest, null, 2));
+    return;
+  }
+  if (command === "verify") {
+    const options = parseOptions(args);
+    console.log(JSON.stringify(
+      await verifyStaticData(options.outputDirectory),
+      null,
+      2,
+    ));
     return;
   }
   if (command !== "update") {

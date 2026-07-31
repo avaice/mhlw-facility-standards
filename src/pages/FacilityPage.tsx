@@ -96,6 +96,12 @@ export function FacilityPage() {
             PDF掲載分を{formatNumber(facility.recentChangeCount)}件反映
           </MetaRow>
         ) : null}
+        {facility.unresolvedChangeCount > 0 ? (
+          <MetaRow label="要原資料確認">
+            略称衝突または抽出値不足のため、
+            {formatNumber(facility.unresolvedChangeCount)}件は自動反映していません
+          </MetaRow>
+        ) : null}
         <MetaRow label="月次名簿 取得日時">
           {manifest ? formatDateTime(manifest.generatedAt) : "—"}
         </MetaRow>
@@ -137,7 +143,11 @@ export function FacilityPage() {
                       ? ` ${formatDate(document.publishedAt)}`
                       : ""}
                     {document.page ? ` ${document.page}頁` : ""}
-                    {document.extractionMethod === "ocr" ? "（OCR）" : ""}
+                    {document.extractionMethod === "ocr-reviewed"
+                      ? "（画像PDF・目視確認済み）"
+                      : document.extractionMethod === "ocr"
+                        ? "（未確認OCR）"
+                        : ""}
                   </span>
                 </li>
               ))}

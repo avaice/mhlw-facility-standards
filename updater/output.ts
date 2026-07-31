@@ -1,4 +1,5 @@
 import {
+  cp,
   mkdir,
   mkdtemp,
   rename,
@@ -51,6 +52,16 @@ export async function writeStaticData(
   const temporary = await mkdtemp(path.join(parent, ".facility-data-"));
   const facilitiesDirectory = path.join(temporary, "facilities");
   await mkdir(facilitiesDirectory, { recursive: true });
+  try {
+    await cp(path.join(output, "changes"), path.join(temporary, "changes"), {
+      recursive: true,
+    });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      await rm(temporary, { recursive: true, force: true });
+      throw error;
+    }
+  }
 
   const shards = new Map<
     string,

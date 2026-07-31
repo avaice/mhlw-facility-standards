@@ -82,6 +82,23 @@ export interface DataManifest {
 
 export type ChangeAction = "upsert" | "remove";
 
+export type ExtractionMethod = "text" | "ocr" | "ocr-reviewed";
+
+export type ChangeReviewStatus =
+  | "automatic"
+  | "manual-reviewed"
+  | "needs-review";
+
+export type ChangeReviewReason =
+  | "unverified-facility-identity"
+  | "missing-standard-abbreviation"
+  | "unknown-standard"
+  | "ambiguous-standard"
+  | "multiple-base-records"
+  | "missing-effective-date"
+  | "missing-acceptance-number"
+  | "unreviewed-ocr";
+
 export interface FacilityChangeEvent {
   id: string;
   action: ChangeAction;
@@ -98,7 +115,9 @@ export interface FacilityChangeEvent {
   documentUrl: string;
   documentSha256: string;
   page: number;
-  extractionMethod: "text" | "ocr";
+  extractionMethod: ExtractionMethod;
+  reviewStatus?: ChangeReviewStatus;
+  reviewReasons?: ChangeReviewReason[];
 }
 
 export interface CompactFacilityChangeRecord {
@@ -131,9 +150,17 @@ export interface ChangeManifest {
   latestAsOf: string;
   facilityCount: number;
   eventCount: number;
+  quality?: {
+    status: "verified" | "needs-review";
+    retainedDocumentCount: number;
+    reviewedOcrDocumentCount: number;
+    unresolvedEventCount: number;
+    unresolvedByReason?: Partial<Record<ChangeReviewReason, number>>;
+  };
   sources: Array<{
     id: string;
     bureauName: string;
+    baseAsOf?: string;
     pageUrls: string[];
     documents: Array<{
       url: string;
@@ -149,7 +176,7 @@ export interface FacilitySourceDocument {
   kind: "snapshot" | "change";
   publishedAt: string | null;
   page: number | null;
-  extractionMethod: "text" | "ocr" | null;
+  extractionMethod: ExtractionMethod | null;
 }
 
 export interface FacilityLookupResult {
@@ -166,4 +193,5 @@ export interface FacilityLookupResult {
   sourceIds: string[];
   sourceDocuments: FacilitySourceDocument[];
   recentChangeCount: number;
+  unresolvedChangeCount: number;
 }

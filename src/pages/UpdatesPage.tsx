@@ -1,6 +1,18 @@
 import { formatDate, formatDateTime, formatNumber } from "../lib/format";
 import { useChangeManifest } from "../lib/useChangeManifest";
 import { useManifest } from "../lib/useManifest";
+import type { ChangeReviewReason } from "../lib/types";
+
+const reviewReasonLabels: Record<ChangeReviewReason, string> = {
+  "unverified-facility-identity": "新規施設の属性未確認",
+  "missing-standard-abbreviation": "施設基準略称の欠損",
+  "unknown-standard": "基準台帳に未登録",
+  "ambiguous-standard": "同一略称の基準が複数",
+  "multiple-base-records": "月次名簿に同一基準が複数",
+  "missing-effective-date": "算定開始日の欠損",
+  "missing-acceptance-number": "受理番号の欠損",
+  "unreviewed-ocr": "未確認OCR",
+};
 
 export function UpdatesPage() {
   const state = useManifest();
@@ -111,8 +123,28 @@ export function UpdatesPage() {
           <h2 className="mt-8 text-base font-bold">月内差分PDF</h2>
           <p className="mt-1 text-sm text-slate-500">
             {formatNumber(changes.facilityCount)}施設・
-            {formatNumber(changes.eventCount)}件の変更を反映
+            {formatNumber(changes.eventCount)}件の変更を収録
           </p>
+          {changes.quality?.unresolvedEventCount ? (
+            <div className="mt-2 border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              <p>
+                略称衝突または抽出値不足のため、
+                {formatNumber(changes.quality.unresolvedEventCount)}件は
+                自動反映せず原資料確認対象にしています。
+              </p>
+              {changes.quality.unresolvedByReason ? (
+                <ul className="mt-1 list-disc pl-5 text-xs">
+                  {Object.entries(changes.quality.unresolvedByReason)
+                    .filter(([, count]) => Boolean(count))
+                    .map(([reason, count]) => (
+                      <li key={reason}>
+                        {reviewReasonLabels[reason as ChangeReviewReason] ?? reason}: {formatNumber(count ?? 0)}件
+                      </li>
+                    ))}
+                </ul>
+              ) : null}
+            </div>
+          ) : null}
           <div className="mt-2 overflow-x-auto">
             <table className="w-full border-collapse text-sm">
               <thead>
@@ -135,7 +167,7 @@ export function UpdatesPage() {
                         source.documents
                           .map((document) => document.publishedAt)
                           .sort()
-                          .at(-1) ?? changes.baseAsOf,
+                          .at(-1) ?? source.baseAsOf ?? changes.baseAsOf,
                       )}
                     </td>
                     <td className="px-2 py-1.5 align-top">

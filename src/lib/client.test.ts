@@ -114,8 +114,8 @@ describe("FacilityStandardsClient", () => {
           prefix: "1810",
           facilities: {
             "1810115202": {
-              name: "テスト診療所",
-              address: "福井県福井市",
+              name: "テスト診療所 〒910-0000",
+              address: "福井県福井市和田2-",
               category: "medical",
               events: [
                 {
@@ -130,6 +130,34 @@ describe("FacilityStandardsClient", () => {
                   sourcePageUrl: "https://example.test/source",
                   documentUrl: "https://example.test/remove.pdf",
                   documentSha256: "a",
+                  page: 1,
+                },
+                {
+                  id: "keep-same",
+                  action: "upsert",
+                  standardId: "kept",
+                  standard: { abbreviation: "継続", name: "継続施設基準" },
+                  acceptanceNumber: "第3号",
+                  effectiveFrom: "2026-06-01",
+                  publishedAt: "2026-07-12",
+                  sourceId: "kinki",
+                  sourcePageUrl: "https://example.test/source",
+                  documentUrl: "https://example.test/add.pdf",
+                  documentSha256: "b",
+                  page: 1,
+                },
+                {
+                  id: "keep-another",
+                  action: "upsert",
+                  standardId: "kept",
+                  standard: { abbreviation: "継続", name: "継続施設基準" },
+                  acceptanceNumber: "第4号",
+                  effectiveFrom: "2026-07-01",
+                  publishedAt: "2026-07-12",
+                  sourceId: "kinki",
+                  sourcePageUrl: "https://example.test/source",
+                  documentUrl: "https://example.test/add.pdf",
+                  documentSha256: "b",
                   page: 1,
                 },
                 {
@@ -158,7 +186,7 @@ describe("FacilityStandardsClient", () => {
         facilities: {
           "1810115202": {
             name: "テスト診療所",
-            address: "福井県福井市",
+            address: "福井県福井市和田2-1006",
             category: "medical",
             sourceIds: ["kinki"],
             sourceDocuments: ["https://example.test/monthly.xlsx"],
@@ -178,15 +206,95 @@ describe("FacilityStandardsClient", () => {
     const facility = await client.get("1810115202");
     expect(facility?.standards.map((standard) => standard.name)).toEqual([
       "継続施設基準",
+      "継続施設基準",
       "新施設基準",
     ]);
     expect(facility?.asOf).toBe("2026-07-15");
-    expect(facility?.recentChangeCount).toBe(2);
+    expect(facility?.recentChangeCount).toBe(3);
+    expect(facility?.unresolvedChangeCount).toBe(0);
+    expect(facility?.facility).toEqual({
+      name: "テスト診療所",
+      address: "福井県福井市和田2-1006",
+    });
     expect(facility?.sourceDocuments.map((document) => document.url)).toEqual([
       "https://example.test/add.pdf",
       "https://example.test/monthly.xlsx",
       "https://example.test/remove.pdf",
     ]);
+  });
+
+  it("同じ略称の基準が複数ある場合は失効を適用せず要確認にする", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (input) => {
+      const url = String(input);
+      if (url.endsWith("/catalog.json")) {
+        return new Response(JSON.stringify({
+          schemaVersion: 1,
+          standards: {
+            first: { abbreviation: "同一略称", name: "施設基準A" },
+            second: { abbreviation: "同一略称", name: "施設基準B" },
+          },
+        }));
+      }
+      if (url.includes("/changes/facilities/")) {
+        return new Response(JSON.stringify({
+          schemaVersion: 1,
+          baseAsOf: "2026-07-01",
+          latestAsOf: "2026-07-15",
+          prefix: "1810",
+          facilities: {
+            "1810115202": {
+              name: "テスト診療所",
+              address: "福井県福井市",
+              category: "medical",
+              events: [{
+                id: "ambiguous-remove",
+                action: "remove",
+                standardId: "unknown",
+                standard: { abbreviation: "同一略称", name: null },
+                acceptanceNumber: "",
+                effectiveFrom: "2026-07-01",
+                publishedAt: "2026-07-15",
+                sourceId: "kinki",
+                sourcePageUrl: "https://example.test/source",
+                documentUrl: "https://example.test/remove.pdf",
+                documentSha256: "a",
+                page: 1,
+                extractionMethod: "text",
+              }],
+            },
+          },
+        }));
+      }
+      return new Response(JSON.stringify({
+        schemaVersion: 1,
+        asOf: "2026-07-01",
+        prefix: "1810",
+        facilities: {
+          "1810115202": {
+            name: "テスト診療所",
+            address: "福井県福井市",
+            category: "medical",
+            sourceIds: ["kinki"],
+            standards: [
+              ["first", "第1号", "2026-06-01"],
+              ["second", "第2号", "2026-06-01"],
+            ],
+          },
+        },
+      }));
+    });
+    const client = new FacilityStandardsClient({
+      baseUrl: "https://example.test",
+      fetch: fetchMock,
+    });
+
+    const facility = await client.get("1810115202");
+    expect(facility?.standards.map((standard) => standard.name)).toEqual([
+      "施設基準A",
+      "施設基準B",
+    ]);
+    expect(facility?.recentChangeCount).toBe(0);
+    expect(facility?.unresolvedChangeCount).toBe(1);
   });
 });
 

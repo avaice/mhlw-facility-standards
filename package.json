@@ -13,6 +13,7 @@
     "preview": "vite preview",
     "check": "tsc -b",
     "test": "vitest run",
+    "verify": "tsx updater/cli.ts verify",
     "update": "tsx updater/cli.ts update",
     "update:recent": "tsx updater/cli.ts update-recent",
     "discover": "tsx updater/cli.ts discover"
@@ -24,20 +25,16 @@
     "react-dom": "^19.2.8"
   },
   "devDependencies": {
-    "@napi-rs/canvas": "^1.0.3",
     "@tailwindcss/vite": "^4.3.3",
-    "@tesseract.js-data/jpn": "^1.0.0",
     "@types/node": "^24.0.0",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@types/yauzl": "^2.10.3",
     "@vitejs/plugin-react": "^6.0.5",
     "cheerio": "^1.2.0",
-    "exceljs": "^4.4.0",
     "pdfjs-dist": "^6.2.108",
     "saxes": "^6.0.0",
     "tailwindcss": "^4.3.3",
-    "tesseract.js": "^7.0.0",
     "tsx": "^4.20.6",
     "typescript": "^5.9.2",
     "vite": "^8.1.5",

@@ -1,11 +1,7 @@
-import { createHash } from "node:crypto";
-import { mkdir } from "node:fs/promises";
-import { createCanvas } from "@napi-rs/canvas";
-import jpnData from "@tesseract.js-data/jpn";
 import { getDocument, Util } from "pdfjs-dist/legacy/build/pdf.mjs";
-import Tesseract from "tesseract.js";
 import { PREFECTURES } from "../config/prefectures.js";
-import { createStandardId } from "../standard.js";
+import { getReviewedOcrRecords } from "../config/reviewed-ocr-documents.js";
+import { createChangeEventId, createStandardId } from "../standard.js";
 import type {
   DownloadedRecentDocument,
   FacilityCategory,
@@ -64,26 +60,6 @@ interface ParsedCode {
 export interface ParsedRecentPdf {
   records: FacilityChangeRecord[];
   warnings: string[];
-}
-
-const CIRCLED_DIGITS: Record<string, string> = {
-  "⓪": "0",
-  "①": "1",
-  "②": "2",
-  "③": "3",
-  "④": "4",
-  "⑤": "5",
-  "⑥": "6",
-  "⑦": "7",
-  "⑧": "8",
-  "⑨": "9",
-};
-
-function normalizeOcrText(value: string): string {
-  return value
-    .replace(/[⓪①②③④⑤⑥⑦⑧⑨]/gu, (digit) => CIRCLED_DIGITS[digit] ?? digit)
-    .replace(/[．。]/gu, ".")
-    .replace(/[，]/gu, ",");
 }
 
 function linesFromItems(items: PositionedText[]): TextLine[] {
@@ -176,26 +152,19 @@ function detectColumns(
   };
 }
 
-function defaultOcrColumns(
-  action: DownloadedRecentDocument["action"],
-): ColumnPositions {
-  return action === "remove"
-    ? {
-        code: 65,
-        name: 135,
-        address: 225,
-        addressEnd: 370,
-        content: 485,
-        contentEnd: 580,
-      }
-    : {
-        code: 25,
-        name: 100,
-        address: 220,
-        addressEnd: 350,
-        content: 380,
-        contentEnd: null,
-      };
+function isRecognizedEmptyTable(items: PositionedText[]): boolean {
+  const headers = [
+    headerPosition(items, /^(?:医療機関|薬局)(?:番号|コード)$/u),
+    headerPosition(items, /^(?:医療機関|薬局)?名称$/u),
+    headerPosition(items, /^(?:医療機関|薬局)?所在地$/u),
+  ];
+  if (headers.some((header) => header === null)) {
+    return false;
+  }
+  const headerY = Math.max(...headers.map((header) => header!.y));
+  return !items.some(
+    (item) => item.y > headerY + 5 && Boolean(compactText(item.text)),
+  );
 }
 
 function parseCode(value: string): ParsedCode | null {
@@ -219,6 +188,62 @@ function parseCode(value: string): ParsedCode | null {
   }
   if (digits.length === 7) {
     return { localCode: digits, fullCode: null };
+  }
+  return null;
+}
+
+function malformedIdentityCode(
+  items: PositionedText[],
+  columns: ColumnPositions,
+): string | null {
+  const lines = linesFromItems(items);
+  const headerY = Math.max(
+    ...[
+      headerPosition(items, /^(?:医療機関|薬局)(?:番号|コード)$/u),
+      headerPosition(items, /^(?:医療機関|薬局)?名称$/u),
+      headerPosition(items, /^(?:医療機関|薬局)?所在地$/u),
+    ].flatMap((header) => header ? [header.y] : []),
+  );
+  for (const line of lines) {
+    if (line.y <= headerY + 5) {
+      continue;
+    }
+    const codeItems = line.items.filter(
+      (item) =>
+        item.x < columns.name - 15 &&
+        Math.abs(item.x - columns.code) < 35 &&
+        Boolean(compactText(item.text)) &&
+        // Some official rows carry a parenthesized secondary code on the
+        // wrapped name/address line; it is not a new facility row.
+        !/^[（(]/u.test(normalizeText(item.text)),
+    );
+    const hasIdentity = line.items.some(
+      (item) =>
+        item.x >= columns.name &&
+        item.x < columns.addressEnd &&
+        Boolean(compactText(item.text)),
+    );
+    if (
+      hasIdentity &&
+      codeItems.length > 0 &&
+      !codeItems.some((item) => parseCode(item.text) !== null)
+    ) {
+      const hasAdjacentPrimaryCode = lines.some(
+        (candidate) =>
+          candidate.y < line.y &&
+          line.y - candidate.y <= 25 &&
+          candidate.items.some(
+            (item) =>
+              item.x < columns.name - 15 &&
+              Math.abs(item.x - columns.code) < 35 &&
+              parseCode(item.text) !== null,
+          ),
+      );
+      if (hasAdjacentPrimaryCode) {
+        continue;
+      }
+      return normalizeText(codeItems.map((item) => item.text).join(" "));
+    }
   }
   return null;
 }
@@ -267,65 +292,104 @@ function parseAcceptance(value: string): {
   };
 }
 
-async function recognizePage(
-  pdfPage: Awaited<ReturnType<Awaited<ReturnType<typeof getDocument>["promise"]>["getPage"]>>,
-  worker: Tesseract.Worker,
-): Promise<PositionedText[]> {
-  const scale = 3;
-  const viewport = pdfPage.getViewport({ scale });
-  const canvas = createCanvas(viewport.width, viewport.height);
-  const context = canvas.getContext("2d");
-  await pdfPage.render({
-    canvasContext: context as never,
-    viewport,
-    canvas: canvas as never,
-  }).promise;
-  const result = await worker.recognize(
-    canvas.toBuffer("image/png"),
-    {},
-    { blocks: true, text: true },
+function addContinuationIdentity(
+  document: DownloadedRecentDocument,
+  page: PdfTextPage,
+  previous: FacilityChangeRecord | null,
+): PdfTextPage {
+  const columns = detectColumns(page.items, document.action);
+  if (!columns) {
+    return page;
+  }
+  const lines = linesFromItems(page.items);
+  const headerY = Math.max(
+    ...[
+      headerPosition(page.items, /^(?:医療機関|薬局)(?:番号|コード)$/u),
+      headerPosition(page.items, /^(?:医療機関|薬局)?名称$/u),
+      headerPosition(page.items, /^(?:医療機関|薬局)?所在地$/u),
+    ].flatMap((header) => header ? [header.y] : []),
   );
-  return (result.data.blocks ?? []).flatMap((block) =>
-    block.paragraphs.flatMap((paragraph) =>
-      paragraph.lines.flatMap((line) =>
-        line.words
-          .filter((word) => word.confidence >= 25)
-          .map((word) => ({
-            x: word.bbox.x0 / scale,
-            y: line.bbox.y0 / scale,
-            text: normalizeOcrText(word.text),
-          }))
-      )
+  if (!Number.isFinite(headerY)) {
+    return page;
+  }
+  const firstCodeY = lines.find((line) =>
+    line.items.some(
+      (item) =>
+        item.x < columns.name - 15 &&
+        Math.abs(item.x - columns.code) < 35 &&
+        parseCode(item.text) !== null,
     )
+  )?.y ?? Number.POSITIVE_INFINITY;
+  const candidates = lines.flatMap((line) => {
+    if (line.y <= headerY + 5 || line.y >= firstCodeY) {
+      return [];
+    }
+    const text = normalizeText(
+      line.items
+        .filter(
+          (item) =>
+            item.x >= columns.content - 5 &&
+            (columns.contentEnd === null || item.x < columns.contentEnd - 5),
+        )
+        .map((item) => item.text)
+        .join(" "),
+    );
+    const actionable = document.action === "upsert"
+      ? parseAcceptance(text) !== null
+      : Boolean(text) && !/^(?:失効|辞退)内容$/u.test(compactText(text));
+    return actionable ? [{ y: line.y }] : [];
+  });
+  const firstContentY = candidates[0]?.y;
+  if (firstContentY === undefined || !previous) {
+    return page;
+  }
+
+  // A new row with a damaged code can also have acceptance text. Only carry
+  // forward when the name/address cells are empty before the first parsed row.
+  const hasIdentityCells = page.items.some(
+    (item) =>
+      item.y > headerY + 5 &&
+      item.y < firstCodeY &&
+      item.x >= columns.name &&
+      item.x < columns.addressEnd &&
+      Boolean(compactText(item.text)),
   );
+  if (hasIdentityCells) {
+    return page;
+  }
+
+  const syntheticY = Math.max(headerY + 2, firstContentY - 3);
+  return {
+    ...page,
+    items: [
+      ...page.items,
+      { x: columns.code, y: syntheticY, text: previous.medicalInstitutionCode },
+      { x: columns.name + 1, y: syntheticY, text: previous.name },
+      ...(previous.address
+        ? [{ x: columns.address + 1, y: syntheticY, text: previous.address }]
+        : []),
+    ],
+  };
 }
 
-function eventId(
-  document: DownloadedRecentDocument,
-  page: number,
-  code: string,
-  standard: {
-    abbreviation: string | null;
-    name: string | null;
-    acceptanceNumber: string;
-    effectiveFrom: string | null;
-  },
-): string {
-  return createHash("sha256")
-    .update(
-      JSON.stringify([
-        document.sha256,
-        page,
-        code,
-        document.action,
-        standard.abbreviation,
-        standard.name,
-        standard.acceptanceNumber,
-        standard.effectiveFrom,
-      ]),
-    )
-    .digest("hex")
-    .slice(0, 24);
+function detectedRemovalContentCount(
+  items: PositionedText[],
+  columns: ColumnPositions,
+): number {
+  return linesFromItems(items).filter((line) => {
+    const text = normalizeText(
+      line.items
+        .filter(
+          (item) =>
+            item.x >= columns.content - 5 &&
+            (columns.contentEnd === null || item.x < columns.contentEnd - 5),
+        )
+        .map((item) => item.text)
+        .join(" "),
+    );
+    return Boolean(text) &&
+      !/^(?:失効|辞退)内容$/u.test(compactText(text));
+  }).length;
 }
 
 function mergeRecord(
@@ -354,9 +418,7 @@ function parsePage(
   document: DownloadedRecentDocument,
   page: PdfTextPage,
 ): { records: FacilityChangeRecord[]; acceptanceCount: number } {
-  const columns =
-    detectColumns(page.items, document.action) ??
-    (page.ocr ? defaultOcrColumns(document.action) : null);
+  const columns = detectColumns(page.items, document.action);
   if (!columns) {
     return { records: [], acceptanceCount: 0 };
   }
@@ -450,7 +512,7 @@ function parsePage(
             maxIsoDate(extractJapaneseDates(line.fullText)) ?? null,
         };
         events.push({
-          id: eventId(document, page.page, fullCode, standard),
+          id: createChangeEventId(document, page.page, fullCode, standard),
           action: "remove",
           standardId: createStandardId(standard),
           standard: {
@@ -513,7 +575,7 @@ function parsePage(
         effectiveFrom,
       };
       events.push({
-        id: eventId(document, page.page, fullCode, standard),
+        id: createChangeEventId(document, page.page, fullCode, standard),
         action: document.action,
         standardId: createStandardId(standard),
         standard: {
@@ -556,16 +618,63 @@ export function parseRecentPdfPages(
   const warnings: string[] = [];
   let acceptanceCount = 0;
   let parsedEventCount = 0;
+  let previousRecord: FacilityChangeRecord | null = null;
 
   for (const page of pages) {
-    const parsed = parsePage(document, page);
-    acceptanceCount += parsed.acceptanceCount;
-    parsedEventCount += parsed.records.reduce(
+    const columns = detectColumns(page.items, document.action);
+    const malformedCode = columns
+      ? malformedIdentityCode(page.items, columns)
+      : null;
+    if (malformedCode) {
+      throw new Error(
+        `${document.documentUrl} ${page.page}ページ: ` +
+          `施設コードを解析できません: ${malformedCode}`,
+      );
+    }
+    const preparedPage = addContinuationIdentity(
+      document,
+      page,
+      previousRecord,
+    );
+    const parsed = parsePage(document, preparedPage);
+    const pageEventCount = parsed.records.reduce(
       (sum, record) => sum + record.events.length,
       0,
     );
-    if (parsed.records.length === 0) {
+    if (document.action === "upsert") {
+      const detectedAcceptanceCount = linesFromItems(page.items).filter(
+        (line) => parseAcceptance(line.text) !== null,
+      ).length;
+      if (pageEventCount !== detectedAcceptanceCount) {
+        throw new Error(
+          `${document.documentUrl} ${page.page}ページ: ` +
+            `受理番号行と生成イベント数が一致しません ` +
+            `(${detectedAcceptanceCount}/${pageEventCount})`,
+        );
+      }
+    } else if (columns) {
+      const detectedContentCount = detectedRemovalContentCount(
+        page.items,
+        columns,
+      );
+      if (pageEventCount !== detectedContentCount) {
+        throw new Error(
+          `${document.documentUrl} ${page.page}ページ: ` +
+            `失効内容行と生成イベント数が一致しません ` +
+            `(${detectedContentCount}/${pageEventCount})`,
+        );
+      }
+    }
+    acceptanceCount += parsed.acceptanceCount;
+    parsedEventCount += pageEventCount;
+    if (parsed.records.length === 0 && isRecognizedEmptyTable(page.items)) {
       warnings.push(`${document.documentUrl} ${page.page}ページ: 対象行なし`);
+      previousRecord = null;
+    } else if (parsed.records.length === 0) {
+      throw new Error(
+        `${document.documentUrl} ${page.page}ページ: ` +
+          "行らしき内容がありますが施設基準を解析できません",
+      );
     }
     if (page.ocr) {
       warnings.push(
@@ -575,6 +684,7 @@ export function parseRecentPdfPages(
     for (const record of parsed.records) {
       mergeRecord(records, record);
     }
+    previousRecord = parsed.records.at(-1) ?? previousRecord;
   }
 
   if (records.size === 0 || parsedEventCount === 0) {
@@ -605,6 +715,16 @@ export function parseRecentPdfPages(
 export async function parseRecentPdf(
   document: DownloadedRecentDocument,
 ): Promise<ParsedRecentPdf> {
+  const reviewedOcrRecords = getReviewedOcrRecords(document);
+  if (reviewedOcrRecords) {
+    return {
+      records: reviewedOcrRecords,
+      warnings: [
+        `${document.documentUrl}: SHA-256固定の目視確認済み転記を使用`,
+      ],
+    };
+  }
+
   const task = getDocument({
     data: new Uint8Array(document.bytes),
     useWorkerFetch: false,
@@ -612,13 +732,12 @@ export async function parseRecentPdf(
   });
   const pdf = await task.promise;
   const pages: PdfTextPage[] = [];
-  let ocrWorker: Tesseract.Worker | null = null;
   try {
     for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
       const pdfPage = await pdf.getPage(pageNumber);
       const viewport = pdfPage.getViewport({ scale: 1 });
       const content = await pdfPage.getTextContent();
-      let items = content.items.flatMap((item) => {
+      const items = content.items.flatMap((item) => {
         if (!("str" in item) || !normalizeText(item.str)) {
           return [];
         }
@@ -629,29 +748,20 @@ export async function parseRecentPdf(
           text: item.str,
         }];
       });
-      let ocr = false;
-      if (!detectColumns(items, document.action)) {
-        await mkdir(".cache/tesseract", { recursive: true });
-        ocrWorker ??= await Tesseract.createWorker(
-          "jpn",
-          Tesseract.OEM.LSTM_ONLY,
-          {
-            ...jpnData,
-            cachePath: ".cache/tesseract",
-          },
+      if (
+        !detectColumns(items, document.action) &&
+        !isRecognizedEmptyTable(items)
+      ) {
+        throw new Error(
+          `${document.documentUrl} ${pageNumber}ページ: ` +
+            "画像PDFまたは未知のレイアウトです。" +
+            "自動OCR公開を停止しました。SHA-256固定の目視確認済み転記が必要です",
         );
-        await ocrWorker.setParameters({
-          preserve_interword_spaces: "1",
-          user_defined_dpi: "300",
-        });
-        items = await recognizePage(pdfPage, ocrWorker);
-        ocr = true;
       }
-      pages.push({ page: pageNumber, items, ocr });
+      pages.push({ page: pageNumber, items });
       pdfPage.cleanup();
     }
   } finally {
-    await ocrWorker?.terminate();
     await task.destroy();
   }
   return parseRecentPdfPages(document, pages);

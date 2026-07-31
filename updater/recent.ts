@@ -9,12 +9,19 @@ import {
 import { parseRecentPdf } from "./parser/recent-pdf.js";
 import { discoverRecentDocuments } from "./recent-discovery.js";
 import { writeRecentData } from "./recent-output.js";
+import {
+  loadExistingRecentData,
+  normalizeRecentData,
+  type RecentDocumentMetadata,
+  sourceBaseDates,
+  validateRecentData,
+} from "./recent-quality.js";
 import type {
   ChangeManifest,
   DataManifest,
-  DownloadedRecentDocument,
   FacilityChangeRecord,
   RecentSourceDefinition,
+  StandardCatalog,
 } from "./types.js";
 import { maxIsoDate } from "./utils/date.js";
 import { uniqueSorted } from "./utils/text.js";
@@ -70,8 +77,10 @@ function mergeRecords(
 function buildManifest(
   baseAsOf: string,
   records: FacilityChangeRecord[],
-  documents: DownloadedRecentDocument[],
+  documents: RecentDocumentMetadata[],
   sources: RecentSourceDefinition[],
+  baseDates: ReadonlyMap<string, string>,
+  quality: ChangeManifest["quality"],
 ): ChangeManifest {
   const latestAsOf = maxIsoDate(documents.map((document) => document.asOf)) ??
     baseAsOf;
@@ -86,6 +95,7 @@ function buildManifest(
       (sum, record) => sum + record.events.length,
       0,
     ),
+    quality,
     sources: sourceIds.map((id) => {
       const definitions = sources.filter((source) => source.sourceId === id);
       const sourceDocuments = documents.filter(
@@ -94,6 +104,7 @@ function buildManifest(
       return {
         id,
         bureauName: definitions[0]?.bureauName ?? id,
+        baseAsOf: baseDates.get(id) ?? baseAsOf,
         pageUrls: uniqueSorted(definitions.map((source) => source.pageUrl)),
         documents: sourceDocuments
           .map((document) => ({
@@ -116,6 +127,10 @@ export async function updateRecentData(
   const baseManifest = JSON.parse(
     await readFile(path.join(outputRoot, "manifest.json"), "utf8"),
   ) as DataManifest;
+  const catalog = JSON.parse(
+    await readFile(path.join(outputRoot, "catalog.json"), "utf8"),
+  ) as StandardCatalog;
+  const baseDates = sourceBaseDates(baseManifest);
 
   const discoveredGroups = await mapWithConcurrency(
     sources,
@@ -123,10 +138,21 @@ export async function updateRecentData(
     async (source) => {
       options.onProgress?.(`${source.bureauName}: 月内差分ページを確認`);
       const html = await fetchPage(source.pageUrl);
-      return discoverRecentDocuments(source, html, baseManifest.asOf);
+      const baseAsOf = baseDates.get(source.sourceId);
+      if (!baseAsOf) {
+        throw new Error(
+          `${source.bureauName}: 月次manifestに地域基準日がありません`,
+        );
+      }
+      return discoverRecentDocuments(source, html, baseAsOf);
     },
   );
-  const discovered = discoveredGroups.flat();
+  const discoveredByUrl = new Map(
+    discoveredGroups.flat().map((document) => [document.documentUrl, document]),
+  );
+  const discovered = [...discoveredByUrl.values()].sort((a, b) =>
+    a.documentUrl.localeCompare(b.documentUrl)
+  );
   options.onProgress?.(`${discovered.length}件の差分PDFを取得`);
   const documents = await mapWithConcurrency(
     discovered,
@@ -140,23 +166,71 @@ export async function updateRecentData(
     options.onProgress?.(`${document.bureauName}: PDFを解析`);
     return parseRecentPdf(document);
   });
-  const records = mergeRecords(
-    parsed.flatMap((result) => result.records),
+  const existing = await loadExistingRecentData(
+    outputRoot,
+    baseDates,
+    new Set(discovered.map((document) => document.documentUrl)),
   );
-  const warnings = parsed.flatMap((result) => result.warnings);
+  const mergedRecords = mergeRecords([
+    ...existing.records,
+    ...parsed.flatMap((result) => result.records),
+  ]);
+  const normalized = await normalizeRecentData(
+    mergedRecords,
+    outputRoot,
+    catalog,
+  );
+  validateRecentData(normalized.records);
+  const currentDocuments: RecentDocumentMetadata[] = documents.map(
+    (document) => ({
+      sourceId: document.sourceId,
+      documentUrl: document.documentUrl,
+      sha256: document.sha256,
+      asOf: document.asOf,
+      action: document.action,
+    }),
+  );
+  const documentByUrl = new Map(
+    [...existing.documents, ...currentDocuments].map((document) => [
+      document.documentUrl,
+      document,
+    ]),
+  );
+  const manifestDocuments = [...documentByUrl.values()].sort((a, b) =>
+    a.documentUrl.localeCompare(b.documentUrl)
+  );
+  const warnings = [
+    ...parsed.flatMap((result) => result.warnings),
+    ...(existing.retainedDocumentCount > 0
+      ? [`掲載ページから消えた未収載文書を${existing.retainedDocumentCount}件保持`]
+      : []),
+    ...(normalized.unresolvedEventCount > 0
+      ? [`曖昧な差分${normalized.unresolvedEventCount}件を自動適用対象外に設定`]
+      : []),
+  ];
+  const quality: ChangeManifest["quality"] = {
+    status: normalized.unresolvedEventCount > 0 ? "needs-review" : "verified",
+    retainedDocumentCount: existing.retainedDocumentCount,
+    reviewedOcrDocumentCount: normalized.reviewedOcrDocumentCount,
+    unresolvedEventCount: normalized.unresolvedEventCount,
+    unresolvedByReason: normalized.unresolvedByReason,
+  };
   const manifest = buildManifest(
     baseManifest.asOf,
-    records,
-    documents,
+    normalized.records,
+    manifestDocuments,
     sources,
+    baseDates,
+    quality,
   );
   await writeRecentData(
-    records,
+    normalized.records,
     manifest,
     path.join(outputRoot, "changes"),
   );
   options.onProgress?.(
-    `${manifest.facilityCount}施設・${manifest.eventCount}件の月内差分を出力`,
+    `${manifest.facilityCount}施設・${manifest.eventCount}件の月内差分を出力` +
+      `（要確認${manifest.quality.unresolvedEventCount}件）`,
   );
   return { manifest, warnings };
 }
